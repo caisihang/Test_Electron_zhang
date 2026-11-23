@@ -23,7 +23,7 @@ export const useAppStore = defineStore('app', {
     // 本次启动是否应用了备份恢复
     restoredOnBoot: false,
     // 全局提示
-    toast: { text: '', type: 'success' as 'success' | 'error' | 'info', visible: false },
+    toast: { text: '', type: 'success' as 'success' | 'error' | 'info', visible: false, nonce: 0 },
   }),
   actions: {
     /** 从 settings 表载入配置 */
@@ -80,7 +80,8 @@ export const useAppStore = defineStore('app', {
     },
     /** 显示轻提示 */
     showToast(text: string, type: 'success' | 'error' | 'info' = 'success'): void {
-      this.toast = { text, type, visible: true }
+      // nonce 每次自增，用作 key 让相同文案也能重新播放入场动画
+      this.toast = { text, type, visible: true, nonce: this.toast.nonce + 1 }
       window.setTimeout(() => {
         this.toast.visible = false
       }, 2800)

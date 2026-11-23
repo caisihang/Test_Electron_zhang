@@ -25,6 +25,8 @@ const icons: Record<string, string> = {
   collapse: 'M15 6l-6 6 6 6',
   expand: 'M9 6l6 6-6 6',
   check: 'M5 12.5 9.5 17 19 7',
+  alert: 'M12 3.5 2.5 20.5h19zM12 10v4.5M12 17.5v.5',
+  close: 'M6 6l12 12M18 6 6 18',
   paperclip: 'M21 11.5 12 20.5a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8',
   file: 'M6 3h8l4 4v14H6zM14 3v5h5M9 13h6M9 17h6',
 }

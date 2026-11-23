@@ -26,6 +26,8 @@ tauri = { version = "2.12.7", features = ["protocol-asset"] }
 tauri-plugin-log = "2"
 # 原生文件夹选择对话框
 tauri-plugin-dialog = "2"
+# 系统通知（Windows 走 toast，WebView2 不支持浏览器 Notification 权限）
+tauri-plugin-notification = "2"
 # 递归扫描合同文件夹
 walkdir = "2"
 

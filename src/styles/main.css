@@ -719,6 +719,12 @@ table.data-table .actions {
   white-space: nowrap;
 }
 
+/* 操作按钮：表格操作列与列表行里按钮直接相邻，统一补上间距 */
+table.data-table td .btn + .btn,
+.list-row .btn + .btn {
+  margin-left: 10px;
+}
+
 .cell-main {
   font-weight: 550;
 }
@@ -937,32 +943,123 @@ table.data-table .actions {
   border-top: 1px solid var(--border);
 }
 
-/* ---------- 提示 ---------- */
+/* ---------- 轻提示 ---------- */
 .toast-wrap {
   position: fixed;
-  top: 20px;
+  top: 18px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   pointer-events: none;
 }
 
 .toast {
-  padding: 10px 18px;
-  border-radius: 9px;
-  background: #111827;
-  color: #fff;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+  max-width: min(460px, calc(100vw - 48px));
+  padding: 11px 18px 11px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  color: var(--text);
   font-size: 13px;
-  box-shadow: var(--shadow-lg);
-  animation: modal-in 0.18s ease-out;
+  line-height: 1.45;
+  box-shadow:
+    0 12px 32px -10px rgba(15, 23, 42, 0.22),
+    0 2px 6px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+  pointer-events: auto;
+  cursor: pointer;
+  animation: toast-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.15);
 }
 
-.toast.error {
-  background: #b91c1c;
+/* 左侧类型色条 */
+.toast::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--green);
 }
 
-.toast.info {
-  background: #1f4fa8;
+/* 类型图标：浅色圆形底 */
+.toast-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.toast-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+/* 底部倒计时进度条，时长与 showToast 的 2800ms 一致 */
+.toast-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--green);
+  opacity: 0.55;
+  transform-origin: left center;
+  animation: toast-bar 2.8s linear forwards;
+}
+
+.toast.error::before,
+.toast.error .toast-bar {
+  background: var(--red);
+}
+
+.toast.error .toast-icon {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.toast.info::before,
+.toast.info .toast-bar {
+  background: var(--primary);
+}
+
+.toast.info .toast-icon {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-bar {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
 
 /* ---------- 其他 ---------- */

@@ -32,7 +32,7 @@ const backups = ref<BackupMeta[]>([])
 const pendingRestore = ref(false)
 const working = ref(false)
 const lastBackupHours = ref<number | null>(null)
-const permission = ref(notifyPermission())
+const permission = ref('')
 
 // 常规设置表单
 const reminderDays = ref(store.reminderDays)
@@ -62,6 +62,10 @@ function syncTabFromRoute(): void {
 onMounted(() => {
   syncTabFromRoute()
   void refreshBackup()
+  // 通知权限需要异步查询（Tauri 走 notification 插件）
+  void notifyPermission().then((value) => {
+    permission.value = value
+  })
 })
 
 watch(() => route.query.tab, syncTabFromRoute)
@@ -92,7 +96,7 @@ async function toggleNotify(event: Event): Promise<void> {
     const result = await requestNotifyPermission()
     permission.value = result
     if (result !== 'granted') {
-      store.showToast('浏览器未授予通知权限，仍可在工作台看到待办', 'error')
+      store.showToast('系统未授予通知权限，仍可在工作台看到待办', 'error')
       ;(event.target as HTMLInputElement).checked = false
       store.saveNotifyEnabled(false)
       return
@@ -106,7 +110,7 @@ async function sendTestNotification(): Promise<void> {
   const result = await requestNotifyPermission()
   permission.value = result
   if (result !== 'granted') {
-    store.showToast('请先在浏览器中允许通知', 'error')
+    store.showToast('请先在系统设置中允许通知', 'error')
     return
   }
   await notifyPending(1, '这是一条测试通知')
@@ -249,7 +253,7 @@ async function exportFullBackup(): Promise<void> {
                 启动时发送系统通知汇总
               </label>
               <span class="field-hint">
-                通知权限：{{ permission === 'granted' ? '已允许' : permission === 'denied' ? '已拒绝（需在浏览器设置中开启）' : '未申请' }}
+                通知权限：{{ permission === 'granted' ? '已允许' : permission === 'denied' ? '已拒绝（需在系统通知设置中开启）' : permission === 'unsupported' ? '当前环境不支持' : '未申请' }}
               </span>
               <div>
                 <button class="btn btn-sm" type="button" @click="sendTestNotification">发送测试通知</button>

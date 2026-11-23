@@ -7,6 +7,8 @@ pub fn run() {
   tauri::Builder::default()
     // 原生文件/文件夹选择框
     .plugin(tauri_plugin_dialog::init())
+    // 系统通知
+    .plugin(tauri_plugin_notification::init())
     .invoke_handler(tauri::generate_handler![
       commands::db_load,
       commands::db_save,

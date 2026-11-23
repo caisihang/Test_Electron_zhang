@@ -267,7 +267,7 @@ Web 预览模式下，部分能力用等价方案替代，接口保持不变，�
 2. **附件**：数据库只存相对路径（`contract/{id}/xxx`、`transaction/{id}/xxx`）。桌面端由 Rust 的 `import_attachment` / `resolve_attachment_path` / `list_attachments` 读写 `data/attachments/`；浏览器预览仍用 IndexedDB。文件库导入会同步写入 `contract_files` 索引表。
 3. **恢复**：严格执行「暂存 + 下次启动交换」。备份包 = `manifest.json` + `finance.db` + `attachments/`，恢复后需刷新（重启）页面。
 4. **Excel**：Web 预览用 SheetJS 生成下载；Tauri 下改为 Rust 的 `rust_xlsxwriter` + 保存对话框。
-5. **提醒**：启动时扫描 + 系统通知汇总，不做后台常驻推送；通知权限需用户手势申请。
+5. **提醒**：启动时扫描 + 系统通知汇总，不做后台常驻推送；桌面端由 `@tauri-apps/plugin-notification` 发送（WebView2 不支持浏览器 Notification），浏览器预览仍走 Web API。
 6. **金额口径**：应收 / 应付 = 未结清计划的剩余金额；执行率 = 实际收付 / 合同金额；收支结余只统计真实流水。
 7. **数据位置**：桌面端数据库快照写 exe 同目录 `data/finance.db`（临时文件 + `.bak` 原子替换），附件在 `data/attachments/`；目录不可写时自动回退 `%APPDATA%/{identifier}/data`。首次启动会把旧 IndexedDB 快照迁移到文件，旧数据不丢。
 
@@ -285,6 +285,8 @@ Web 预览模式下，部分能力用等价方案替代，接口保持不变，�
 8. `npm run tauri build` 通过：release 编译 5m05s，产物 `personal-finance.exe` 3.77 MB、NSIS 安装包 `个人财务_0.1.0_x64-setup.exe` 1.71 MB。
 9. 合同文件库的实机交互（选目录、预览、导入）尚待在 `npm run tauri dev` 下验证。
 10. 数据目录改为 exe 同目录 `data/`：`cargo check` 与 `npm run build` 通过；备份包已同步支持桌面端附件的写入与恢复。实机启动验证需手动执行（本机自动化环境无法启动 GUI）。
+11. NSIS 安装向导改为简体中文（`languages: ["SimpChinese"]`），生成脚本含 `MUI_LANGUAGE "SimpChinese"`。
+12. 通知改用 `tauri-plugin-notification`：原 `notify_pending` 命令从未在 Rust 注册、WebView2 也不支持浏览器 Notification，是「发送测试通知」失败的根因；现由前端直接调用插件，`cargo check` 与前端构建通过。
 
 ### 2.6 待办
 
@@ -829,20 +831,30 @@ pub async fn stage_restore(
 3. 在首页以「待办清单」展示；
 4. 可选：调用 `tauri-plugin-notification` 发送一条汇总通知。
 
-### 7.2 通知发送（Rust 端）
+### 7.2 通知发送（前端直接调用插件）
+
+不自定义 Rust 命令，前端通过 `@tauri-apps/plugin-notification` 发送；WebView2 不支持浏览器 `Notification` 权限，因此桌面端不能走 Web API。
+
+```ts
+// src/services/notifier.ts
+import { isPermissionGranted, requestPermission, sendNotification }
+  from '@tauri-apps/plugin-notification'
+
+if (await isPermissionGranted()) {
+  sendNotification({ title: '今日财务待办', body: `${count} 项需要处理：${detail}` })
+}
+```
+
+Rust 侧只需注册插件与授权：
 
 ```rust
-use tauri_plugin_notification::NotificationExt;
+// lib.rs
+.plugin(tauri_plugin_notification::init())
+```
 
-#[tauri::command]
-pub fn notify_pending(app: tauri::AppHandle, count: usize, detail: String) -> Result<(), String> {
-    app.notification()
-        .builder()
-        .title("今日财务待办")
-        .body(format!("{} 项需要处理：{}", count, detail))
-        .show()
-        .map_err(|e| e.to_string())
-}
+```json
+// capabilities/default.json
+"permissions": ["core:default", "dialog:default", "notification:default"]
 ```
 
 Windows 上通知仅在安装后的应用中生效，开发模式下显示 PowerShell 名称与图标，属预期行为。
@@ -894,7 +906,7 @@ Tauri 2 默认阻止所有潜在危险命令，必须在 `src-tauri/capabilities
 | `find_reconcile_candidates` / `confirm_reconcile` / `cancel_reconcile` | 核销 |
 | `import_attachment` / `resolve_attachment_path` | 附件 |
 | `create_backup` / `stage_restore` / `list_backups` | 备份恢复 |
-| `notify_pending` | 本地通知 |
+| `notify_pending`（未使用） | 本地通知改由前端调用 notification 插件发送，见 7.2 |
 | `get_dashboard_summary` | 首页指标（本月收支结余、应收应付、账户余额） |
 | `export_contracts_xlsx` / `export_transactions_xlsx` | Excel 导出 |
 
@@ -1006,8 +1018,9 @@ pnpm add @tauri-apps/plugin-sql @tauri-apps/plugin-fs @tauri-apps/plugin-dialog 
   "createUpdaterArtifacts": false,
   "windows": {
     "nsis": {
-      "installMode": "currentUser",   // 个人使用，当前用户安装即可
-      "displayLanguageSelector": false
+      "installMode": "currentUser",      // 个人使用，当前用户安装即可
+      "languages": ["SimpChinese"],      // 安装向导使用简体中文（不配则默认英文）
+      "displayLanguageSelector": false   // 不弹语言选择，直接按 languages 使用
     }
   }
 }
@@ -1017,7 +1030,7 @@ pnpm add @tauri-apps/plugin-sql @tauri-apps/plugin-fs @tauri-apps/plugin-dialog 
 pnpm tauri build
 ```
 
-产物位于 `src-tauri/target/release/bundle/nsis/`。
+产物位于 `src-tauri/target/release/bundle/nsis/`。安装向导界面语言由 `languages` 决定，可选值见 Tauri 的 NSIS 语言标识（如 `SimpChinese`、`English`、`TradChinese`）；写成 `"all"` 并开启 `displayLanguageSelector` 可让用户在安装时选择。
 
 ### 11.2 代码签名（可选）
 
