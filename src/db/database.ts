@@ -1,10 +1,41 @@
-// 数据库核心：sql.js(WASM) 初始化、迁移、查询封装、快照持久化（IndexedDB）
+// 数据库核心：sql.js(WASM) 初始化、迁移、查询封装、快照持久化（桌面端文件 / 浏览器 IndexedDB）
 import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.js'
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
 import { idbGet, idbPut } from './idb'
 import { MIGRATIONS } from './schema'
+// 桌面端把快照写入 exe 同目录的 data/finance.db
+import { invokeCommand, isTauri } from '@/services/tauri'
 
 const SNAPSHOT_KEY = 'finance.db'
+
+/** 读取数据库快照：桌面端读文件，浏览器读 IndexedDB */
+async function loadSnapshot(): Promise<Uint8Array | null> {
+  if (isTauri()) {
+    const buffer = await invokeCommand<ArrayBuffer>('db_load')
+    const bytes = new Uint8Array(buffer)
+    if (bytes.byteLength > 0) return bytes
+    // 兼容旧版本：快照曾在 IndexedDB，首次升级时迁移到文件
+    const legacy = await idbGet<Uint8Array>('kv', SNAPSHOT_KEY)
+    if (legacy && legacy.byteLength > 0) {
+      const migrated = new Uint8Array(legacy)
+      await saveSnapshot(migrated)
+      return migrated
+    }
+    return null
+  }
+  const saved = await idbGet<Uint8Array>('kv', SNAPSHOT_KEY)
+  return saved && saved.byteLength > 0 ? new Uint8Array(saved) : null
+}
+
+/** 写入数据库快照：桌面端写文件，浏览器写 IndexedDB */
+async function saveSnapshot(bytes: Uint8Array): Promise<void> {
+  if (isTauri()) {
+    // IPC 以数字数组传输二进制，业务库通常小于 1 MB
+    await invokeCommand<void>('db_save', { bytes: Array.from(bytes) })
+    return
+  }
+  await idbPut('kv', SNAPSHOT_KEY, bytes)
+}
 
 let SQL: SqlJsStatic | null = null
 let db: Database | null = null
@@ -22,8 +53,8 @@ export async function initDatabase(): Promise<void> {
   if (db) return
   // @types/sql.js 的 SqlJsConfig 必填字段与实际运行时不符，这里做类型兼容
   SQL = await initSqlJs({ locateFile: () => wasmUrl } as unknown as Parameters<typeof initSqlJs>[0])
-  const saved = await idbGet<Uint8Array>('kv', SNAPSHOT_KEY)
-  db = saved && saved.byteLength > 0 ? new SQL.Database(new Uint8Array(saved)) : new SQL.Database()
+  const saved = await loadSnapshot()
+  db = saved ? new SQL.Database(saved) : new SQL.Database()
   db.run('PRAGMA foreign_keys = ON')
   runMigrations()
   seedDefaults()
@@ -180,11 +211,11 @@ export function markDirty(): void {
   }, 200)
 }
 
-/** 立即保存数据库快照到 IndexedDB */
+/** 立即保存数据库快照（桌面端写 data/finance.db） */
 export async function persistNow(): Promise<void> {
   if (!db) return
   const bytes = db.export()
-  await idbPut('kv', SNAPSHOT_KEY, bytes)
+  await saveSnapshot(bytes)
   persistedAt = Date.now()
 }
 
@@ -200,7 +231,7 @@ export function exportDatabaseBytes(): Uint8Array {
 
 /** 用备份中的数据库字节替换当前快照（恢复用，需要刷新页面） */
 export async function replaceDatabaseSnapshot(bytes: Uint8Array): Promise<void> {
-  await idbPut('kv', SNAPSHOT_KEY, bytes)
+  await saveSnapshot(bytes)
 }
 
 /** 页面关闭前尽量保存一次 */
@@ -209,7 +240,7 @@ if (typeof window !== 'undefined') {
     if (db) {
       try {
         const bytes = db.export()
-        void idbPut('kv', SNAPSHOT_KEY, bytes)
+        void saveSnapshot(bytes)
       } catch {
         // 忽略关闭阶段的持久化异常
       }

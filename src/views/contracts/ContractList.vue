@@ -73,6 +73,9 @@ function goDetail(id: number): void {
       <div class="page-desc">合同是业务源头，计划、流水、发票都在详情页里</div>
     </div>
     <div class="page-actions">
+      <button class="btn" type="button" @click="router.push('/library')">
+        <NavIcon name="upload" :size="14" /> 从文件夹导入
+      </button>
       <button class="btn btn-primary" type="button" @click="openCreate">
         <NavIcon name="plus" :size="14" /> 新建合同
       </button>

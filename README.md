@@ -116,19 +116,29 @@ Tauri 对前端框架无感知，Vite 是 SPA 的推荐构建工具。个人财�
 ```text
 Test_Electron_zhang/
 ├── index.html                  应用入口 HTML（挂载 #app）
-├── package.json                依赖与脚本（dev / build / preview）
+├── package.json                依赖与脚本（dev / build / preview / tauri）
 ├── vite.config.ts              Vite 配置：端口 1420、别名 @、构建目标
 ├── tsconfig.json               TS 工程引用入口
 ├── tsconfig.app.json           应用侧 TS 配置（strict、@/* 路径）
 ├── tsconfig.node.json          Vite 配置文件用 TS 配置
 ├── README.md                   本文档
+├── src-tauri/                  Tauri 2 原生壳（Rust）
+│   ├── Cargo.toml              依赖：tauri 2.12（protocol-asset）/ dialog / walkdir / log
+│   ├── build.rs                构建脚本
+│   ├── tauri.conf.json         窗口、CSP（含 asset 协议）、NSIS 打包配置
+│   ├── capabilities/default.json  权限：core + dialog
+│   ├── icons/                  应用图标（含 icon.ico）
+│   └── src/
+│       ├── main.rs             桌面入口
+│       ├── lib.rs              Builder：注册插件与命令
+│       └── commands.rs         11 个命令：DB 读写、目录扫描、附件导入/解析/删除/列出/备份读写/清空、系统打开
 └── src/
     ├── main.ts                 启动引导：恢复 -> 初始化 DB -> 挂载 -> 通知/自动备份
     ├── App.vue                 根组件（路由出口 + 全局确认框/提示）
     ├── env.d.ts                .vue 与 wasm?url 的类型声明
     ├── db/                     数据层
     │   ├── idb.ts              IndexedDB 封装（kv / files / backups / staging）
-    │   ├── schema.ts           全部迁移 SQL（001 core / 002 invoices / 003 settings）
+    │   ├── schema.ts           全部迁移 SQL（001 core / 002 invoices / 003 settings / 004 contract_files）
     │   ├── database.ts         sql.js 初始化、迁移执行、查询、持久化、种子数据
     │   └── repositories/       按业务拆分的仓储（SQL 只出现在这一层）
     │       ├── accounts.ts     账户：列表（含实时余额）、增改、归档
@@ -137,9 +147,11 @@ Test_Electron_zhang/
     │       ├── transactions.ts 流水：筛选、增改、软删除、凭证、可核销计划
     │       ├── categories.ts   分类：两级树、增改、删除保护
     │       ├── invoices.ts     发票：合同内轻量登记与删除
+    │       ├── contractFiles.ts 合同文件索引：文件库导入记录、按合同/关键字检索
     │       └── analysis.ts     分析：工作台汇总、合同执行表、月度/分类统计
     ├── services/               与外部资源交互（可切 Tauri）
     │   ├── tauri.ts            运行时探测与 invoke/convertFileSrc 适配层
+    │   ├── folder.ts           文件夹选择、目录扫描、本地文件预览地址（桌面端）
     │   ├── attachment.ts       附件导入、读取、预览、删除（相对路径规则）
     │   ├── backup.ts           备份打包、列表、下载、暂存恢复、自动备份
     │   ├── exporter.ts         Excel 导出（合同 / 流水 / 计划）
@@ -154,6 +166,7 @@ Test_Electron_zhang/
     │   ├── ModalDialog.vue     通用弹窗
     │   ├── ConfirmHost.vue     全局确认框宿主
     │   ├── NavIcon.vue         内联 SVG 图标
+    │   ├── FilePreviewModal.vue 文件预览：图片 / PDF / 文本，其他转系统打开
     │   └── ContractFormModal.vue 合同新建/编辑表单
     ├── composables/
     │   └── useConfirm.ts       Promise 化确认框
@@ -162,6 +175,7 @@ Test_Electron_zhang/
     │   ├── contracts/          ContractList / ContractDetail（5 Tab）
     │   ├── schedules/          ScheduleList
     │   ├── transactions/       TransactionList（记账 + 核销）
+    │   ├── library/            FileLibrary（文件夹浏览、预览、导入台账）
     │   ├── accounts/           AccountList
     │   ├── categories/         CategoryList
     │   ├── analysis/           ContractExecution / IncomeExpense
@@ -183,6 +197,7 @@ views / components  →  stores / services / repositories  →  db/database  →
 - 页面只调 `repositories` 取数、调 `services` 处理文件与备份，不直接写 SQL。
 - `repositories` 只依赖 `db/database.ts`，不感知 Vue。
 - `services` 通过 `tauri.ts` 判断运行环境：Web 用 IndexedDB / SheetJS / Notification API，Tauri 下走 `invoke`。
+- 文件库与目录扫描依赖 Rust 命令（`src-tauri/src/commands.rs`），仅在桌面端可用；浏览器预览会提示不可用。
 
 常用改动入口：
 
@@ -206,7 +221,7 @@ P0 全量功能已实现并在浏览器中跑通。当前技术底座：
 - **运行时**：Vue 3 + TypeScript(strict) + Vite，开发端口 `1420`（与 Tauri `devUrl` 一致）
 - **数据层**：SQLite（sql.js / WASM）执行与手册一致的建表 SQL，快照持久化到 IndexedDB
 - **附件**：文件实体以 Blob 存入 IndexedDB，数据库只存相对路径
-- **原生壳**：`src-tauri` 尚未接入，但前端已预留 Tauri 适配层（`src/services/tauri.ts`），装好 Rust 工具链后可按本手册逐步替换
+- **原生壳**：`src-tauri` 脚手架已生成（Tauri 2.12，NSIS 打包配置就绪），前端 Tauri 适配层已预留。本机缺少 Rust 与 MSVC，暂不能编译；装好工具链后即可 `npm run tauri build`。
 
 ### 2.2 快速开始
 
@@ -216,6 +231,9 @@ npm install
 npm run dev        # http://localhost:1420
 npm run build      # vue-tsc 类型检查 + 生产构建
 npm run preview    # 预览构建产物
+
+npm run tauri dev    # 桌面端调试（需 Rust + MSVC + WebView2）
+npm run tauri build  # 打包 NSIS 安装包，产物在 src-tauri/target/release/bundle/nsis/
 ```
 
 ### 2.3 模块状态
@@ -224,7 +242,8 @@ npm run preview    # 预览构建产物
 | --- | --- | --- |
 | 工作台 | 已完成 | 本月收支、应收应付、账户余额、待办计划、最近流水、快捷入口 |
 | 合同台账 | 已完成 | 搜索 / 方向 / 状态筛选、新建 / 编辑、软删除、变更留痕 |
-| 合同详情（5 Tab） | 已完成 | 计划、流水、发票、变更、附件；含 30/50/20 按比例生成计划 |
+| 合同文件库 | 已完成 | 选择本地文件夹、递归列出合同文件、搜索 / 类型筛选、预览、导入台账 |
+| 合同详情（5 Tab） | 已完成 | 计划、流水、发票、变更、附件；含 30/50/20 按比例生成计划；桌面端附件走原生对话框 |
 | 收付款计划 | 已完成 | 未结清 / 逾期 / 已结清筛选、逾期统计、新增与编辑、一键去记账 |
 | 收支流水 | 已完成 | 筛选、记账、关联合同 / 计划、凭证上传、核销（推荐匹配 + 人工确认） |
 | 账户管理 | 已完成 | 初始余额、实时余额、归档 / 启用 |
@@ -237,18 +256,20 @@ npm run preview    # 预览构建产物
 | 发票（合同内） | 已完成 | 轻量登记与删除；一级菜单按 Feature Flag 隐藏 |
 | 回收站 | 未开始 | P1：软删除数据已在库中保留，恢复界面待做 |
 | 应收应付表 | 未开始 | P1：当前由工作台应收 / 应付卡片与计划页覆盖 |
-| Tauri / Rust 命令层 | 未开始 | 需安装 Rust + MSVC 构建工具链 |
+| Tauri 壳 | 已完成 | Rust 1.100 + MSVC 环境就绪，`npm run tauri build` 可产出 NSIS 安装包 |
+| Rust 命令层 | 已完成（本期范围） | 7 个命令：扫描目录 / 读字节 / 导入 / 解析 / 删除 / 列出附件 / 系统打开；备份、导出、通知仍在调用前端实现 |
 
 ### 2.4 与原生手册的差异
 
 Web 预览模式下，部分能力用等价方案替代，接口保持不变，接 Tauri 后无需改页面：
 
-1. **数据访问**：用 sql.js 执行与手册一致的建表 SQL，全部语句集中在 `src/db/schema.ts`，迁移按 `PRAGMA user_version` 执行；快照写入 IndexedDB。接入 Tauri 后替换为 `tauri-plugin-sql` 与真实文件。
-2. **附件**：数据库只存相对路径（`contract/{id}/xxx`、`transaction/{id}/xxx`）。Web 下文件实体存 IndexedDB；Tauri 下切换为 `app_data_dir/attachments/` 并调用 Rust 命令，前端调用方式不变（`src/services/attachment.ts`）。
+1. **数据访问**：用 sql.js 执行与手册一致的建表 SQL，全部语句集中在 `src/db/schema.ts`，迁移按 `PRAGMA user_version` 执行；桌面端快照写入 exe 同目录 `data/finance.db`（浏览器预览回退 IndexedDB），未迁移到 `tauri-plugin-sql`。
+2. **附件**：数据库只存相对路径（`contract/{id}/xxx`、`transaction/{id}/xxx`）。桌面端由 Rust 的 `import_attachment` / `resolve_attachment_path` / `list_attachments` 读写 `data/attachments/`；浏览器预览仍用 IndexedDB。文件库导入会同步写入 `contract_files` 索引表。
 3. **恢复**：严格执行「暂存 + 下次启动交换」。备份包 = `manifest.json` + `finance.db` + `attachments/`，恢复后需刷新（重启）页面。
 4. **Excel**：Web 预览用 SheetJS 生成下载；Tauri 下改为 Rust 的 `rust_xlsxwriter` + 保存对话框。
 5. **提醒**：启动时扫描 + 系统通知汇总，不做后台常驻推送；通知权限需用户手势申请。
 6. **金额口径**：应收 / 应付 = 未结清计划的剩余金额；执行率 = 实际收付 / 合同金额；收支结余只统计真实流水。
+7. **数据位置**：桌面端数据库快照写 exe 同目录 `data/finance.db`（临时文件 + `.bak` 原子替换），附件在 `data/attachments/`；目录不可写时自动回退 `%APPDATA%/{identifier}/data`。首次启动会把旧 IndexedDB 快照迁移到文件，旧数据不丢。
 
 ### 2.5 验证记录
 
@@ -260,15 +281,20 @@ Web 预览模式下，部分能力用等价方案替代，接口保持不变，�
 4. 工作台本月收入 30,000、应收 70,000；收支结余表全年收入 30,000 且柱状图正常；合同执行表执行率 30.0%。
 5. 立即备份生成 zip（手动），刷新页面后数据完整保留，提醒天数默认 3 生效。
 6. `npm run build` 通过（`vue-tsc` 无错误）。
+7. Tauri 环境（Rust 1.100 + MSVC）就绪后 `cargo check` 通过，命令层无编译错误。
+8. `npm run tauri build` 通过：release 编译 5m05s，产物 `personal-finance.exe` 3.77 MB、NSIS 安装包 `个人财务_0.1.0_x64-setup.exe` 1.71 MB。
+9. 合同文件库的实机交互（选目录、预览、导入）尚待在 `npm run tauri dev` 下验证。
+10. 数据目录改为 exe 同目录 `data/`：`cargo check` 与 `npm run build` 通过；备份包已同步支持桌面端附件的写入与恢复。实机启动验证需手动执行（本机自动化环境无法启动 GUI）。
 
 ### 2.6 待办
 
 按优先级：
 
-1. 接入 Tauri 2 壳：`src-tauri` + `tauri-plugin-sql/fs/dialog/notification/opener`，实现 `import_attachment`、`resolve_attachment_path`、`backup_create/restore`、`export_*`、`notify_pending` 等命令。
-2. 数据层切换到 Rust 命令或 `tauri-plugin-sql`，保留当前 repository 接口不变。
-3. P1：回收站界面、应收应付表、发票一级菜单与异常票据徽标。
-4. 打包：Windows NSIS 安装包与首次运行说明。
+1. 用 `npm run tauri dev` 在 Windows 实机验证：选择文件夹、递归扫描、图片 / PDF 预览、导入台账（新建合同 / 挂到已有）。
+2. 补齐备份 / Excel 导出 / 通知的 Rust 命令（当前仍在前端执行，桌面端可正常工作但未走原生能力）。
+3. 数据层如需进一步迁移到 `tauri-plugin-sql`（需把所有仓储改为异步），再单独评估；当前文件快照方案已满足本地存储需求。
+4. P1：回收站界面、应收应付表、发票一级菜单与异常票据徽标。
+5. 打包：安装包首次运行说明与版本号规范。
 
 ---
 

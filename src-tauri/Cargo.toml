@@ -1,0 +1,38 @@
+[package]
+name = "personal-finance"
+version = "0.1.0"
+description = "纯本地个人财务软件（Vue 3 + Tauri 2 + SQLite）"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2024"
+rust-version = "1.90"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "personal_finance_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.6", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+# protocol-asset：允许前端通过 asset:// 访问本地文件（图片预览等）
+tauri = { version = "2.12.7", features = ["protocol-asset"] }
+tauri-plugin-log = "2"
+# 原生文件夹选择对话框
+tauri-plugin-dialog = "2"
+# 递归扫描合同文件夹
+walkdir = "2"
+
+# 发布构建瘦身：去掉符号与调试信息，开启 LTO
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

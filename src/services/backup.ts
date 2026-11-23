@@ -1,11 +1,13 @@
 // 备份与恢复
-// Web 预览：备份包 = zip(manifest.json + finance.db + attachments/)，存放在 IndexedDB
+// 备份：备份包 = zip(manifest.json + finance.db + attachments/)
+// 存放位置：备份 zip 仍放 IndexedDB；附件在桌面端来自 data/attachments，浏览器来自 IndexedDB
 // 恢复策略与 README 一致：先暂存，应用重启（页面刷新）时交换数据库与附件
 import JSZip from 'jszip'
 import dayjs from 'dayjs'
 import { exportDatabaseBytes, persistNow, replaceDatabaseSnapshot } from '@/db/database'
 import { SCHEMA_VERSION } from '@/db/schema'
 import { idbClear, idbDelete, idbEntries, idbGet, idbPut } from '@/db/idb'
+import { invokeCommand, isTauri } from './tauri'
 import type { AttachmentMeta, BackupMeta } from '@/types/models'
 
 const BACKUP_STORE = 'backups'
@@ -28,13 +30,30 @@ interface StagedRestore {
   files: StagedFile[]
 }
 
+/** 桌面端：从 data/attachments 收集附件用于打包 */
+async function collectDesktopAttachments(): Promise<Array<{ path: string; blob: Blob }>> {
+  const paths = await invokeCommand<string[]>('list_all_attachments')
+  const result: Array<{ path: string; blob: Blob }> = []
+  for (const path of paths) {
+    const buffer = await invokeCommand<ArrayBuffer>('read_attachment', { relativePath: path })
+    result.push({ path, blob: new Blob([buffer]) })
+  }
+  return result
+}
+
 /** 生成备份包（auto 为 true 时计入自动备份上限） */
 export async function createBackup(auto = false): Promise<BackupMeta> {
   await persistNow()
 
   const zip = new JSZip()
   const dbBytes = exportDatabaseBytes()
-  const files = await idbEntries<StagedFile>('files')
+  // 桌面端附件在文件系统，浏览器在 IndexedDB
+  const attachmentFiles: Array<{ path: string; blob: Blob }> = isTauri()
+    ? await collectDesktopAttachments()
+    : (await idbEntries<StagedFile>('files')).map(({ key, value }) => ({
+        path: key,
+        blob: value.blob,
+      }))
 
   const manifest = {
     version: 1,
@@ -42,13 +61,13 @@ export async function createBackup(auto = false): Promise<BackupMeta> {
     app: '个人财务',
     created_at: new Date().toISOString(),
     db_bytes: dbBytes.byteLength,
-    attachment_count: files.length,
+    attachment_count: attachmentFiles.length,
   }
 
   zip.file('manifest.json', JSON.stringify(manifest, null, 2))
   zip.file('finance.db', dbBytes)
-  for (const { key, value } of files) {
-    zip.file(`attachments/${key}`, value.blob)
+  for (const file of attachmentFiles) {
+    zip.file(`attachments/${file.path}`, file.blob)
   }
 
   const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
@@ -164,9 +183,21 @@ export async function applyPendingRestore(): Promise<boolean> {
   if (!staged) return false
 
   await replaceDatabaseSnapshot(staged.dbBytes)
-  await idbClear('files')
-  for (const file of staged.files) {
-    await idbPut('files', file.path, file)
+  if (isTauri()) {
+    // 桌面端：附件写入 data/attachments
+    await invokeCommand<void>('clear_attachments')
+    for (const file of staged.files) {
+      const bytes = new Uint8Array(await file.blob.arrayBuffer())
+      await invokeCommand<void>('write_attachment', {
+        relativePath: file.path,
+        bytes: Array.from(bytes),
+      })
+    }
+  } else {
+    await idbClear('files')
+    for (const file of staged.files) {
+      await idbPut('files', file.path, file)
+    }
   }
   await idbDelete('staging', STAGING_KEY)
   return true

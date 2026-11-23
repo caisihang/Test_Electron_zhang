@@ -23,6 +23,12 @@ const router = createRouter({
       meta: { title: '合同详情', desc: '计划、流水、发票、变更、附件' },
     },
     {
+      path: '/library',
+      name: 'file-library',
+      component: () => import('@/views/library/FileLibrary.vue'),
+      meta: { title: '合同文件库', desc: '浏览本地文件夹中的合同文件，预览或导入台账' },
+    },
+    {
       path: '/schedules',
       name: 'schedules',
       component: () => import('@/views/schedules/ScheduleList.vue'),

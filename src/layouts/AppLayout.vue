@@ -38,6 +38,7 @@ const groups = computed<MenuGroup[]>(() => {
       title: '业务',
       items: [
         { label: '合同台账', to: '/contracts', icon: 'contract', badge: store.overdueContracts },
+        { label: '合同文件库', to: '/library', icon: 'file' },
         { label: '收付款计划', to: '/schedules', icon: 'schedule', badge: store.overdueSchedules },
       ],
     },

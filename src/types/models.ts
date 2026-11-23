@@ -160,6 +160,20 @@ export interface AttachmentMeta {
   created_at: string
 }
 
+/** 合同文件索引（导入台账的文件元数据） */
+export interface ContractFile {
+  id: number
+  contract_id: number | null
+  rel_path: string
+  name: string
+  size: number
+  mime: string
+  source_path: string | null
+  created_at: string
+  /** 联表查询带出的合同标题 */
+  contract_title?: string | null
+}
+
 /** 备份记录 */
 export interface BackupMeta {
   id: string

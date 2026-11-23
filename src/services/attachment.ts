@@ -40,6 +40,16 @@ export async function importAttachment(file: File, bizType: string, bizId: numbe
   return path
 }
 
+/** 桌面端按绝对路径导入附件（文件夹导入使用），返回相对路径 */
+export async function importAttachmentFromPath(
+  sourcePath: string,
+  bizType: string,
+  bizId: number,
+): Promise<string> {
+  if (!isTauri()) throw new Error('按路径导入附件仅在桌面端可用')
+  return invokeCommand<string>('import_attachment', { sourcePath, bizType, bizId })
+}
+
 /** 读取附件记录（含 Blob） */
 export async function getAttachment(path: string): Promise<AttachmentRecord | null> {
   return (await idbGet<AttachmentRecord>(FILE_STORE, path)) ?? null
@@ -62,6 +72,14 @@ export async function getAttachmentUrl(path: string): Promise<string> {
 
 /** 按业务前缀列出附件（如 contract/12/） */
 export async function listAttachmentsByPrefix(prefix: string): Promise<AttachmentMeta[]> {
+  // 桌面端：走 Rust 命令读取 attachments 目录
+  if (isTauri()) {
+    const parts = prefix.replace(/\/$/, '').split('/')
+    const bizType = parts[0]
+    const bizId = Number(parts[1])
+    if (!bizType || !Number.isFinite(bizId)) return []
+    return invokeCommand<AttachmentMeta[]>('list_attachments', { bizType, bizId })
+  }
   const rows = await idbEntries<AttachmentRecord>(FILE_STORE)
   return rows
     .filter((row) => row.key.startsWith(prefix))

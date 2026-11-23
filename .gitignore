@@ -31,5 +31,13 @@ pnpm-debug.log*
 Thumbs.db
 desktop.ini
 
-# ---------- Tauri 构建产物（接入 src-tauri 后生效） ----------
-src-tauri/target/
+# ---------- Tauri 构建产物（只放行 exe，其余全部忽略） ----------
+src-tauri/target/*
+!src-tauri/target/release/
+src-tauri/target/release/*
+!src-tauri/target/release/personal-finance.exe
+!src-tauri/target/release/bundle/
+src-tauri/target/release/bundle/*
+!src-tauri/target/release/bundle/nsis/
+src-tauri/target/release/bundle/nsis/*
+!src-tauri/target/release/bundle/nsis/*.exe

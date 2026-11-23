@@ -130,10 +130,26 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `
 
+// 004 合同文件索引：导入台账的文件元数据（文件实体在 attachments 目录，DB 只存相对路径）
+const CONTRACT_FILES_SQL = `
+CREATE TABLE IF NOT EXISTS contract_files (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id INTEGER REFERENCES contracts(id),
+    rel_path    TEXT NOT NULL UNIQUE,
+    name        TEXT NOT NULL,
+    size        INTEGER NOT NULL DEFAULT 0,
+    mime        TEXT NOT NULL DEFAULT '',
+    source_path TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_contract_files_contract ON contract_files(contract_id);
+`
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, description: 'create_core_tables', sql: CORE_SQL },
   { version: 2, description: 'add_invoices', sql: INVOICE_SQL },
   { version: 3, description: 'add_settings', sql: SETTINGS_SQL },
+  { version: 4, description: 'add_contract_files', sql: CONTRACT_FILES_SQL },
 ]
 
 /** 最新 schema 版本，写入备份包 manifest */

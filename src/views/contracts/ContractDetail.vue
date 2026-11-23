@@ -44,10 +44,14 @@ import {
   deleteAttachment,
   getAttachmentUrl,
   importAttachment,
+  importAttachmentFromPath,
   isPreviewable,
   listAttachmentsByPrefix,
   openAttachment,
 } from '@/services/attachment'
+// 桌面端：附件选择走原生对话框；时间戳为秒数时需要单独格式化
+import { isTauri } from '@/services/tauri'
+import { formatStamp } from '@/services/folder'
 import type { AttachmentMeta } from '@/types/models'
 
 const route = useRoute()
@@ -318,6 +322,7 @@ async function removeInvoice(invoice: Invoice): Promise<void> {
 
 // ---------- 附件 ----------
 const uploading = ref(false)
+const desktop = isTauri()
 
 async function onFilesSelected(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
@@ -335,6 +340,40 @@ async function onFilesSelected(event: Event): Promise<void> {
     uploading.value = false
     input.value = ''
   }
+}
+
+/** 桌面端：原生对话框选择附件后按路径复制 */
+async function pickAndUpload(): Promise<void> {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const picked = await open({
+      multiple: true,
+      title: '选择合同附件',
+      filters: [
+        {
+          name: '合同文件',
+          extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'webp'],
+        },
+      ],
+    })
+    if (!picked) return
+    const paths = Array.isArray(picked) ? picked : [picked]
+    uploading.value = true
+    for (const path of paths) {
+      await importAttachmentFromPath(path, 'contract', contractId)
+    }
+    await load()
+    store.showToast('附件已上传')
+  } catch (error) {
+    store.showToast(String(error instanceof Error ? error.message : error), 'error')
+  } finally {
+    uploading.value = false
+  }
+}
+
+/** 秒级时间戳与 ISO 字符串都兼容 */
+function attachmentTime(value: string): string {
+  return /^\d+$/.test(value) ? formatStamp(Number(value)) : formatDate(value)
 }
 
 async function previewAttachment(item: AttachmentMeta): Promise<void> {
@@ -622,10 +661,20 @@ function back(): void {
 
       <!-- 附件 -->
       <div v-if="activeTab === 'attachments'" class="card-body tab-pane">
-        <label class="file-drop" style="display: block; margin-bottom: 14px">
+        <label v-if="!desktop" class="file-drop" style="display: block; margin-bottom: 14px">
           <input type="file" multiple style="display: none" :disabled="uploading" @change="onFilesSelected" />
           {{ uploading ? '上传中…' : '点击选择附件（合同扫描件、补充协议、图片等）' }}
         </label>
+        <button
+          v-else
+          class="file-drop"
+          type="button"
+          style="display: block; width: 100%; margin-bottom: 14px"
+          :disabled="uploading"
+          @click="pickAndUpload"
+        >
+          {{ uploading ? '上传中…' : '点击选择附件（合同扫描件、补充协议、图片等）' }}
+        </button>
         <div v-if="attachments.length === 0" class="empty" style="padding: 24px">
           暂无附件，支持图片、PDF、Word 等格式
         </div>
@@ -637,7 +686,7 @@ function back(): void {
             </div>
             <div class="attachment-meta">
               <strong :title="item.name">{{ item.name }}</strong>
-              <span>{{ formatFileSize(item.size) }} · {{ formatDate(item.created_at) }}</span>
+              <span>{{ formatFileSize(item.size) }} · {{ attachmentTime(item.created_at) }}</span>
               <div style="display: flex; gap: 8px; margin-top: 4px">
                 <button v-if="item.mime === 'application/pdf' || item.mime.startsWith('image/')" class="btn btn-link" type="button" @click="previewAttachment(item)">预览</button>
                 <button class="btn btn-link" type="button" @click="openAttachment(item.path)">打开</button>
