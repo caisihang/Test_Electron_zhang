@@ -1,6 +1,7 @@
 [package]
 name = "personal-finance"
-version = "0.1.0"
+# 版本号唯一数据源是 tauri.conf.json，此值由 scripts/sync-version.mjs 自动同步，勿手改
+version = "0.1.2"
 description = "纯本地个人财务软件（Vue 3 + Tauri 2 + SQLite）"
 authors = ["you"]
 license = ""

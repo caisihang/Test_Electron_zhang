@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavIcon from '@/components/NavIcon.vue'
 import { useAppStore } from '@/stores/app'
+import { APP_VERSION } from '@/constants/version'
 import {
   createBackup,
   deleteBackup,
@@ -408,7 +409,7 @@ async function exportFullBackup(): Promise<void> {
             <div class="brand-mark" style="width: 42px; height: 42px; border-radius: 12px; font-size: 20px">财</div>
             <div>
               <div style="font-size: 17px; font-weight: 650">个人财务</div>
-              <div class="text-dim text-sm">v0.1.0 · 纯本地 · 单用户</div>
+              <div class="text-dim text-sm">v{{ APP_VERSION }} · 纯本地 · 单用户</div>
             </div>
           </div>
           <dl class="kv-list">

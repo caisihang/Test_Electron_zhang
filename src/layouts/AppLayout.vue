@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavIcon from '@/components/NavIcon.vue'
 import { useAppStore } from '@/stores/app'
+import { APP_VERSION } from '@/constants/version'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,6 +40,7 @@ const groups = computed<MenuGroup[]>(() => {
       items: [
         { label: '合同台账', to: '/contracts', icon: 'contract', badge: store.overdueContracts },
         { label: '合同文件库', to: '/library', icon: 'file' },
+        { label: '已导入台账', to: '/library/imported', icon: 'paperclip' },
         { label: '收付款计划', to: '/schedules', icon: 'schedule', badge: store.overdueSchedules },
       ],
     },
@@ -97,12 +99,24 @@ function toggleCollapse(): void {
   localStorage.setItem('sidebar-collapsed', collapsed.value ? '1' : '0')
 }
 
-function isActive(item: MenuItem): boolean {
+// 主高亮：当前页严格匹配（settings 还要校验 tab query）
+function isPrimaryActive(item: MenuItem): boolean {
   if (item.tab) {
     return route.path === '/settings' && (route.query.tab ?? 'general') === item.tab
   }
   if (item.exact) return route.path === item.to
-  return route.path.startsWith(item.to)
+  return route.path === item.to
+}
+
+// 祖先高亮：访问的是 item 的子路由时，同域父菜单加浅背景
+function isAncestorActive(item: MenuItem): boolean {
+  if (item.exact || item.tab) return false
+  return route.path.startsWith(item.to + '/')
+}
+
+// 分组内是否有菜单处于主高亮（用于分组标题加粗）
+function groupHasActive(items: MenuItem[]): boolean {
+  return items.some((i) => isPrimaryActive(i) || isAncestorActive(i))
 }
 
 function go(item: MenuItem): void {
@@ -127,12 +141,12 @@ function quickAdd(): void {
 
       <nav class="sidebar-nav">
         <div v-for="group in groups" :key="group.title || 'main'">
-          <div class="nav-group-title">{{ group.title }}</div>
+          <div v-if="group.title" class="nav-group-title">{{ group.title }}</div>
           <a
             v-for="item in group.items"
             :key="item.label"
             class="nav-item"
-            :class="{ active: isActive(item) }"
+            :class="{ active: isPrimaryActive(item) }"
             href="javascript:void(0)"
             :title="item.label"
             @click="go(item)"
@@ -144,7 +158,7 @@ function quickAdd(): void {
         </div>
       </nav>
 
-      <div class="sidebar-foot">数据保存在本机，不联网 · v0.1.0</div>
+      <div class="sidebar-foot">数据保存在本机，不联网 · v{{ APP_VERSION }}</div>
     </aside>
 
     <main class="main">
