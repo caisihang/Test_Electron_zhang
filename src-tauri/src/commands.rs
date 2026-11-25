@@ -97,6 +97,55 @@ pub fn scan_contract_folder(app: tauri::AppHandle, dir: String) -> Result<Vec<Fo
   Ok(files)
 }
 
+/// 读取指定文件的元信息（单文件/多文件上传时使用），并授权所在目录供预览
+#[tauri::command]
+pub fn stat_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<Vec<FolderFile>, String> {
+  let mut files = Vec::new();
+  for raw in paths {
+    let path = PathBuf::from(&raw);
+    if !path.is_file() {
+      continue;
+    }
+    let ext = path
+      .extension()
+      .and_then(|value| value.to_str())
+      .unwrap_or("")
+      .to_lowercase();
+    if !DOC_EXTS.contains(&ext.as_str()) {
+      continue;
+    }
+    // 动态授权父目录，保证 asset 协议能直接预览图片 / PDF
+    if let Some(parent) = path.parent() {
+      let _ = app.asset_protocol_scope().allow_directory(parent, false);
+    }
+    let meta = match fs::metadata(&path) {
+      Ok(meta) => meta,
+      Err(_) => continue,
+    };
+    let modified = meta
+      .modified()
+      .ok()
+      .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+      .map(|duration| duration.as_secs())
+      .unwrap_or(0);
+    files.push(FolderFile {
+      name: path
+        .file_name()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_default(),
+      path: path.to_string_lossy().to_string(),
+      relative_path: path
+        .file_name()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_default(),
+      size: meta.len(),
+      modified,
+      ext,
+    });
+  }
+  Ok(files)
+}
+
 /// 读取文件字节（PDF/文本预览兜底；返回二进制避免大数组 JSON 序列化）
 #[tauri::command]
 pub fn read_file_bytes(path: String) -> Result<tauri::ipc::Response, String> {
@@ -391,4 +440,19 @@ pub fn open_path(path: String) -> Result<(), String> {
   }
   #[allow(unreachable_code)]
   Err("当前平台不支持".into())
+}
+
+/// 把前端传来的 base64 内容写入用户选定的路径（导出 Excel / 备份包）
+#[tauri::command]
+pub fn write_file_bytes(path: String, base64_data: String) -> Result<(), String> {
+  use base64::{engine::general_purpose::STANDARD, Engine};
+  let bytes = STANDARD
+    .decode(base64_data.as_bytes())
+    .map_err(|e| format!("内容解码失败：{e}"))?;
+  let target = PathBuf::from(&path);
+  if let Some(parent) = target.parent() {
+    fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{e}"))?;
+  }
+  fs::write(&target, bytes).map_err(|e| format!("写入文件失败：{e}"))?;
+  Ok(())
 }

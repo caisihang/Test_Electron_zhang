@@ -8,6 +8,7 @@ import { exportDatabaseBytes, persistNow, replaceDatabaseSnapshot } from '@/db/d
 import { SCHEMA_VERSION } from '@/db/schema'
 import { idbClear, idbDelete, idbEntries, idbGet, idbPut } from '@/db/idb'
 import { invokeCommand, isTauri } from './tauri'
+import { saveBlob } from './saveFile'
 import type { AttachmentMeta, BackupMeta } from '@/types/models'
 
 const BACKUP_STORE = 'backups'
@@ -110,16 +111,13 @@ export async function deleteBackup(id: string): Promise<void> {
   await idbDelete(BACKUP_STORE, id)
 }
 
-/** 下载备份包到本地 */
-export async function downloadBackup(id: string): Promise<void> {
+/** 下载备份包到本地：桌面端弹另存为，浏览器直接下载 */
+export async function downloadBackup(id: string): Promise<string | null> {
   const record = await idbGet<BackupRecord>(BACKUP_STORE, id)
   if (!record) throw new Error('备份不存在')
-  const url = URL.createObjectURL(record.blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = record.meta.file_name
-  link.click()
-  setTimeout(() => URL.revokeObjectURL(url), 4000)
+  return saveBlob(record.meta.file_name, record.blob, [
+    { name: '备份包', extensions: ['zip'] },
+  ])
 }
 
 /** 从本地 zip 导入备份并暂存（重启后生效） */

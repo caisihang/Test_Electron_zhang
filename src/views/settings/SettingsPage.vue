@@ -15,7 +15,7 @@ import {
   stageRestoreFromBackup,
   stageRestoreFromFile,
 } from '@/services/backup'
-import { exportContractsXlsx, exportSchedulesXlsx, exportTransactionsXlsx } from '@/services/exporter'
+import { exportContractsXlsx, exportInvoicesXlsx, exportSchedulesXlsx, exportTransactionsXlsx } from '@/services/exporter'
 import { notifyPending, notifyPermission, requestNotifyPermission } from '@/services/notifier'
 import { runtimeLabel } from '@/services/tauri'
 import { SCHEMA_VERSION } from '@/db/schema'
@@ -133,8 +133,8 @@ async function backupNow(): Promise<void> {
 
 async function download(item: BackupMeta): Promise<void> {
   try {
-    await downloadBackup(item.id)
-    store.showToast('备份包已开始下载')
+    const path = await downloadBackup(item.id)
+    if (path !== null) store.showToast('备份包已保存')
   } catch (error) {
     store.showToast(String(error instanceof Error ? error.message : error), 'error')
   }
@@ -190,10 +190,12 @@ function applyRestore(): void {
 }
 
 // ---------- 导出 ----------
-function safeExport(action: () => void, label: string): void {
+// 桌面端会弹「另存为」；用户取消时 path 为 null
+async function safeExport(action: () => Promise<string | null>, label: string): Promise<void> {
   try {
-    action()
-    store.showToast(`${label}已开始下载`)
+    const path = await action()
+    if (path === null) return
+    store.showToast(`${label}已保存`)
   } catch (error) {
     store.showToast(String(error instanceof Error ? error.message : error), 'error')
   }
@@ -203,9 +205,9 @@ async function exportFullBackup(): Promise<void> {
   working.value = true
   try {
     const meta = await createBackup(false)
-    await downloadBackup(meta.id)
+    const path = await downloadBackup(meta.id)
     await refreshBackup()
-    store.showToast('完整备份包已开始下载')
+    if (path !== null) store.showToast('完整备份包已保存')
   } catch (error) {
     store.showToast(String(error instanceof Error ? error.message : error), 'error')
   } finally {
@@ -372,9 +374,12 @@ async function exportFullBackup(): Promise<void> {
             <button class="btn" type="button" style="justify-content: flex-start" @click="safeExport(exportSchedulesXlsx, '收付款计划')">
               <NavIcon name="download" :size="14" /> 导出收付款计划（.xlsx）
             </button>
+            <button class="btn" type="button" style="justify-content: flex-start" @click="safeExport(exportInvoicesXlsx, '发票台账')">
+              <NavIcon name="download" :size="14" /> 导出发票台账（.xlsx）
+            </button>
           </div>
           <div class="hint-box" style="margin-top: 14px">
-            接入 Tauri 后，Excel 改由 Rust 的 rust_xlsxwriter 生成并通过保存对话框写入用户选择的位置，避免前端处理大文件占用内存。
+            桌面端导出会弹出系统「另存为」对话框，由你选择保存目录；浏览器预览模式则直接下载到默认下载目录。
           </div>
         </div>
 

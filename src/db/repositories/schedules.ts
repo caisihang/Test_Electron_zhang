@@ -16,7 +16,8 @@ export interface ScheduleFilter {
 export interface ScheduleInput {
   contract_id: number
   label: string | null
-  due_date: string
+  /** 到期日可为空 */
+  due_date: string | null
   planned_amount: number
   sort_order?: number
 }
@@ -56,7 +57,7 @@ export function listSchedules(filter: ScheduleFilter = {}): ScheduleRow[] {
      FROM schedules s
      JOIN contracts c ON c.id = s.contract_id
      WHERE ${where.join(' AND ')}
-     ORDER BY s.due_date ASC, s.sort_order ASC, s.id ASC`,
+     ORDER BY s.due_date IS NULL, s.due_date ASC, s.sort_order ASC, s.id ASC`,
     params,
   )
 }
@@ -82,7 +83,7 @@ export function createSchedule(input: ScheduleInput): number {
   return update(
     `INSERT INTO schedules (contract_id, direction, label, due_date, planned_amount, actual_amount, status, sort_order)
      VALUES (?, ?, ?, ?, ?, 0, 'pending', ?)`,
-    [input.contract_id, contract.direction, input.label || null, input.due_date, input.planned_amount, sortOrder],
+    [input.contract_id, contract.direction, input.label || null, input.due_date || null, input.planned_amount, sortOrder],
   )
 }
 
@@ -98,7 +99,7 @@ export function updateSchedule(
 ): void {
   update('UPDATE schedules SET label = ?, due_date = ?, planned_amount = ?, sort_order = ? WHERE id = ?', [
     input.label || null,
-    input.due_date,
+    input.due_date || null,
     input.planned_amount,
     input.sort_order ?? 0,
     id,
@@ -132,10 +133,11 @@ export function recalcSchedule(id: number): void {
   let status: ScheduleStatus = 'pending'
   if (total >= schedule.planned_amount - 0.01) {
     status = 'settled'
-  } else if (total > 0) {
-    status = schedule.due_date < today() ? 'overdue' : 'partial'
-  } else if (schedule.due_date < today()) {
+  } else if (schedule.due_date && schedule.due_date < today()) {
+    // 到期日为空时不判定逾期
     status = 'overdue'
+  } else if (total > 0) {
+    status = 'partial'
   }
 
   update('UPDATE schedules SET actual_amount = ?, status = ? WHERE id = ?', [total, status, id])
@@ -156,7 +158,7 @@ export function findReconcileCandidates(transactionId: number): ReconcileCandida
     `SELECT s.*, c.title AS contract_title, c.contract_no
      FROM schedules s JOIN contracts c ON c.id = s.contract_id
      WHERE s.contract_id = ? AND s.direction = ? AND s.status IN ('pending','partial','overdue')
-     ORDER BY s.due_date ASC`,
+     ORDER BY s.due_date IS NULL, s.due_date ASC`,
     [txn.contract_id, txn.direction],
   )
 
@@ -219,6 +221,7 @@ export function listPendingSchedules(reminderDays: number, limit = 8): ScheduleR
     `SELECT s.*, c.title AS contract_title, c.contract_no, c.counterparty
      FROM schedules s JOIN contracts c ON c.id = s.contract_id
      WHERE c.deleted_at IS NULL AND s.status <> 'settled'
+       AND s.due_date IS NOT NULL
        AND s.due_date <= date('now','localtime', '+' || ? || ' day')
      ORDER BY s.due_date ASC
      LIMIT ?`,

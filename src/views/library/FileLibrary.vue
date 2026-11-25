@@ -1,25 +1,22 @@
 <script setup lang="ts">
 // 合同文件库：选择本地文件夹，递归浏览其中所有合同文件，支持预览与导入台账
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import NavIcon from '@/components/NavIcon.vue'
-import ModalDialog from '@/components/ModalDialog.vue'
 import FilePreviewModal from '@/components/FilePreviewModal.vue'
+import ContractFileImportModal from '@/components/ContractFileImportModal.vue'
 import { getSetting, setSetting } from '@/db/database'
-import { createContract, listContracts, nextContractNo } from '@/db/repositories/contracts'
-import { addContractFile } from '@/db/repositories/contractFiles'
-import { importAttachmentFromPath } from '@/services/attachment'
 import {
   formatSize,
   formatStamp,
-  mimeFromExt,
   openLocalPath,
+  pickContractFiles,
   pickContractFolder,
   scanContractFolder,
+  statLocalFiles,
   type FolderFile,
 } from '@/services/folder'
 import { isTauri } from '@/services/tauri'
 import { useAppStore } from '@/stores/app'
-import type { ContractRow, Direction } from '@/types/models'
 
 const store = useAppStore()
 
@@ -36,12 +33,10 @@ const previewVisible = ref(false)
 
 // 导入台账弹窗
 const showImport = ref(false)
-const importing = ref(false)
-const importMode = ref<'new' | 'existing'>('new')
-const importDirection = ref<Direction>('income')
-const importCounterparty = ref('')
-const importContractId = ref(0)
-const contracts = ref<ContractRow[]>([])
+// 待导入的文件（与勾选保持同步）
+const selectedFiles = computed(() =>
+  files.value.filter((file) => selected.value.includes(file.path)),
+)
 
 // 扩展名分组
 const TYPE_GROUPS: Record<string, string[]> = {
@@ -136,64 +131,40 @@ async function openFolder(): Promise<void> {
   }
 }
 
-/** 打开导入弹窗，加载合同下拉 */
+/** 向上传单个文件：选择后并入列表并自动勾选 */
+async function uploadSingleFile(): Promise<void> {
+  try {
+    const paths = await pickContractFiles(false)
+    if (paths.length === 0) return
+    const picked = await statLocalFiles(paths)
+    if (picked.length === 0) {
+      store.showToast('仅支持合同类文件（PDF/Word/Excel/PPT/图片）', 'error')
+      return
+    }
+    // 按路径去重后并入当前列表
+    const known = new Set(files.value.map((file) => file.path))
+    const merged = [...picked.filter((file) => !known.has(file.path)), ...files.value]
+    files.value = merged
+    selected.value = [...new Set([...selected.value, ...picked.map((file) => file.path)])]
+    store.showToast(`已添加 ${picked.length} 个文件`)
+  } catch (err) {
+    store.showToast(err instanceof Error ? err.message : String(err), 'error')
+  }
+}
+
+/** 打开导入弹窗 */
 function openImport(): void {
   if (!selectedCount.value) {
     store.showToast('请先勾选要导入的文件', 'info')
     return
   }
-  contracts.value = listContracts({})
-  importContractId.value = contracts.value[0]?.id ?? 0
   showImport.value = true
 }
 
-/** 执行导入：新建合同 或 挂到已有合同 */
-async function doImport(): Promise<void> {
-  const chosen = files.value.filter((file) => selected.value.includes(file.path))
-  if (!chosen.length) return
-  if (importMode.value === 'existing' && !importContractId.value) {
-    store.showToast('请选择目标合同', 'error')
-    return
-  }
-
-  importing.value = true
-  try {
-    for (const file of chosen) {
-      let contractId = importContractId.value
-      if (importMode.value === 'new') {
-        const title = file.name.replace(/\.[^.]+$/, '') || file.name
-        contractId = createContract({
-          contract_no: nextContractNo(),
-          title,
-          direction: importDirection.value,
-          counterparty: importCounterparty.value.trim() || '待补充',
-          sign_date: null,
-          start_date: null,
-          end_date: null,
-          total_amount: 0,
-          status: 'active',
-          note: `来源文件：${file.relative_path}`,
-        })
-      }
-      const relPath = await importAttachmentFromPath(file.path, 'contract', contractId)
-      addContractFile({
-        contract_id: contractId,
-        rel_path: relPath,
-        name: file.name,
-        size: file.size,
-        mime: mimeFromExt(file.ext),
-        source_path: file.relative_path,
-      })
-    }
-    store.refreshBadges()
-    store.showToast(`已导入 ${chosen.length} 个文件`)
-    showImport.value = false
-    selected.value = []
-  } catch (err) {
-    store.showToast(err instanceof Error ? err.message : String(err), 'error')
-  } finally {
-    importing.value = false
-  }
+/** 导入完成：刷新勾选状态 */
+function onImported(): void {
+  selected.value = []
+  void refresh()
 }
 
 /** 相对路径的目录部分 */
@@ -228,8 +199,11 @@ onMounted(() => {
       <button class="btn" type="button" :disabled="!dir || loading" @click="refresh">
         <NavIcon name="refresh" :size="14" /> 重新扫描
       </button>
+      <button class="btn" type="button" :disabled="!desktop" @click="uploadSingleFile">
+        <NavIcon name="upload" :size="14" /> 上传文件
+      </button>
       <button class="btn btn-primary" type="button" @click="chooseFolder">
-        <NavIcon name="upload" :size="14" /> 选择文件夹
+        <NavIcon name="folder" :size="14" /> 选择文件夹
       </button>
     </div>
   </div>
@@ -305,64 +279,8 @@ onMounted(() => {
   <!-- 文件预览 -->
   <FilePreviewModal v-model="previewVisible" :file="previewFile" />
 
-  <!-- 导入台账 -->
-  <ModalDialog v-model="showImport" title="导入台账" size="md">
-    <div class="form-grid">
-      <div class="form-row">
-        <label class="form-label">导入方式</label>
-        <div class="form-control" style="display: flex; gap: 16px">
-          <label class="radio-line">
-            <input v-model="importMode" type="radio" value="new" /> 每个文件新建合同
-          </label>
-          <label class="radio-line">
-            <input v-model="importMode" type="radio" value="existing" /> 挂到已有合同
-          </label>
-        </div>
-      </div>
-
-      <template v-if="importMode === 'new'">
-        <div class="form-row">
-          <label class="form-label">合同方向</label>
-          <div class="form-control">
-            <select v-model="importDirection" class="select">
-              <option value="income">收入合同</option>
-              <option value="expense">支出合同</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <label class="form-label">往来方</label>
-          <div class="form-control">
-            <input v-model="importCounterparty" class="input" placeholder="可留空，后续在台账补充" />
-          </div>
-        </div>
-      </template>
-
-      <template v-else>
-        <div class="form-row">
-          <label class="form-label">目标合同</label>
-          <div class="form-control">
-            <select v-model.number="importContractId" class="select">
-              <option v-for="item in contracts" :key="item.id" :value="item.id">
-                {{ item.contract_no }} · {{ item.title }}
-              </option>
-            </select>
-            <div v-if="!contracts.length" class="form-hint">暂无合同，请先选择「新建合同」</div>
-          </div>
-        </div>
-      </template>
-
-      <div class="form-hint">
-        将导入 {{ selectedCount }} 个文件；文件会复制到应用数据目录，原文件夹不受影响。
-      </div>
-    </div>
-    <template #footer>
-      <button class="btn" type="button" @click="showImport = false">取消</button>
-      <button class="btn btn-primary" type="button" :disabled="importing" @click="doImport">
-        {{ importing ? '导入中…' : '开始导入' }}
-      </button>
-    </template>
-  </ModalDialog>
+  <!-- 导入台账（与合同台账共用组件） -->
+  <ContractFileImportModal v-model="showImport" :files="selectedFiles" @imported="onImported" />
 </template>
 
 <style scoped>

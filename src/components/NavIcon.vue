@@ -29,6 +29,7 @@ const icons: Record<string, string> = {
   close: 'M6 6l12 12M18 6 6 18',
   paperclip: 'M21 11.5 12 20.5a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8',
   file: 'M6 3h8l4 4v14H6zM14 3v5h5M9 13h6M9 17h6',
+  folder: 'M3 6h6l2 2h10v11H3zM3 6v13',
 }
 </script>
 

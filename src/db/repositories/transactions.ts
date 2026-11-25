@@ -173,12 +173,12 @@ export function setTransactionVoucher(id: number, path: string | null): void {
 }
 
 /** 合同下可用（未结清）的计划，供流水表单选择 */
-export function listOpenSchedulesByContract(contractId: number, direction: Direction): { id: number; label: string | null; due_date: string; remaining: number }[] {
-  return queryAll<{ id: number; label: string | null; due_date: string; remaining: number }>(
+export function listOpenSchedulesByContract(contractId: number, direction: Direction): { id: number; label: string | null; due_date: string | null; remaining: number }[] {
+  return queryAll<{ id: number; label: string | null; due_date: string | null; remaining: number }>(
     `SELECT id, label, due_date, planned_amount - actual_amount AS remaining
      FROM schedules
      WHERE contract_id = ? AND direction = ? AND status IN ('pending','partial','overdue')
-     ORDER BY due_date ASC`,
+     ORDER BY due_date IS NULL, due_date ASC`,
     [contractId, direction],
   )
 }

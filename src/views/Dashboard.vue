@@ -4,15 +4,19 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import NavIcon from '@/components/NavIcon.vue'
 import { getDashboardSummary, type DashboardData } from '@/db/repositories/analysis'
+import { getInvoiceSummary } from '@/db/repositories/invoices'
 import { useAppStore } from '@/stores/app'
 import { daysFromToday, directionText, formatDate, formatMoney, scheduleStatusText } from '@/utils/format'
 
 const router = useRouter()
 const store = useAppStore()
 const data = ref<DashboardData | null>(null)
+// 发票闭环：待开票金额与合同数
+const invoiceSummary = ref(getInvoiceSummary())
 
 function load(): void {
   data.value = getDashboardSummary(store.reminderDays)
+  invoiceSummary.value = getInvoiceSummary()
   store.refreshBadges()
 }
 
@@ -24,7 +28,9 @@ const recent = computed(() => data.value?.recent ?? [])
 const pending = computed(() => data.value?.pending ?? [])
 
 // 待办紧急程度文案
-function dueHint(dueDate: string): { text: string; cls: string } {
+function dueHint(dueDate: string | null): { text: string; cls: string } {
+  // 未设到期日的计划不参与倒计时
+  if (!dueDate) return { text: '未设到期日', cls: 'tag-gray' }
   const days = daysFromToday(dueDate)
   if (days < 0) return { text: `逾期 ${Math.abs(days)} 天`, cls: 'tag-red' }
   if (days === 0) return { text: '今天到期', cls: 'tag-amber' }
@@ -72,7 +78,7 @@ function goNewTransaction(): void {
       </div>
     </div>
 
-    <div class="stat-grid cols-3" style="margin-top: 14px">
+    <div class="stat-grid" style="margin-top: 14px">
       <div class="stat-card">
         <div class="stat-label">待收款（应收）</div>
         <div class="stat-value green">{{ formatMoney(data.receivable) }}</div>
@@ -87,6 +93,11 @@ function goNewTransaction(): void {
         <div class="stat-label">需要行动</div>
         <div class="stat-value primary">{{ data.overdueCount + data.dueSoonCount }}</div>
         <div class="stat-hint">逾期 {{ data.overdueCount }} · {{ store.reminderDays }} 天内到期 {{ data.dueSoonCount }}</div>
+      </div>
+      <div class="stat-card" style="cursor: pointer" @click="router.push('/invoices')">
+        <div class="stat-label">待开票</div>
+        <div class="stat-value">{{ formatMoney(invoiceSummary.notIssuedAmount) }}</div>
+        <div class="stat-hint">{{ invoiceSummary.notIssuedCount }} 张待开 · {{ invoiceSummary.pendingContractCount }} 份合同未开满</div>
       </div>
     </div>
 

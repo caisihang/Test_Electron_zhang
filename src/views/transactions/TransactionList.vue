@@ -491,7 +491,7 @@ function clearContractFilter(): void {
         <select v-model.number="form.schedule_id" class="select" :disabled="!form.contract_id || openSchedules.length === 0">
           <option :value="null">暂不核销</option>
           <option v-for="schedule in openSchedules" :key="schedule.id" :value="schedule.id">
-            {{ schedule.label || '计划' }} · 到期 {{ schedule.due_date }} · 剩余 {{ formatMoney(schedule.remaining) }}
+            {{ schedule.label || '计划' }} · 到期 {{ formatDate(schedule.due_date) }} · 剩余 {{ formatMoney(schedule.remaining) }}
           </option>
         </select>
         <span class="field-hint">

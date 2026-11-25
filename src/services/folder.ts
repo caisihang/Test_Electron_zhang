@@ -24,6 +24,29 @@ export async function pickContractFolder(): Promise<string | null> {
   return typeof selected === 'string' ? selected : null
 }
 
+/** 合同类文件扩展名（与 Rust 端 DOC_EXTS 保持一致） */
+const CONTRACT_EXTS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'webp']
+
+/** 选择单个或多个合同文件（不限定目录），返回绝对路径；取消返回空数组 */
+export async function pickContractFiles(multiple = false): Promise<string[]> {
+  if (!isTauri()) throw new Error('选择文件仅在桌面端可用')
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const selected = await open({
+    multiple,
+    directory: false,
+    title: multiple ? '选择合同文件（可多选）' : '选择合同文件',
+    filters: [{ name: '合同文件', extensions: CONTRACT_EXTS }],
+  })
+  if (!selected) return []
+  return Array.isArray(selected) ? selected : [selected]
+}
+
+/** 读取本地文件元信息（单文件上传时补齐大小/修改时间），并授权预览目录 */
+export async function statLocalFiles(paths: string[]): Promise<FolderFile[]> {
+  if (paths.length === 0) return []
+  return invokeCommand<FolderFile[]>('stat_files', { paths })
+}
+
 /** 扫描目录下全部合同类文件（Rust 递归扫描，并自动授权 asset 预览） */
 export async function scanContractFolder(dir: string): Promise<FolderFile[]> {
   return invokeCommand<FolderFile[]>('scan_contract_folder', { dir })

@@ -120,11 +120,23 @@ export const invoiceDirectionText: Record<string, string> = {
   received: '收票',
 }
 
-/** 发票状态文案 */
+/** 发票状态文案（旧字段，仅供兼容展示） */
 export const invoiceStatusText: Record<string, string> = {
   normal: '正常',
   missing_payment: '缺流水',
   missing_invoice: '缺发票',
+}
+
+/** 发票类型文案 */
+export const invoiceTypeText: Record<string, string> = {
+  ordinary: '普票',
+  special: '专票',
+}
+
+/** 开票状态文案 */
+export const issueStatusText: Record<string, string> = {
+  not_issued: '未开',
+  issued: '已开',
 }
 
 /** 计划标签预设 */

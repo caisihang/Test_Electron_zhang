@@ -30,6 +30,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 # 递归扫描合同文件夹
 walkdir = "2"
+# 前端导出文件时以 base64 传输字节，Rust 负责解码落盘
+base64 = "0.22"
 
 # 发布构建瘦身：去掉符号与调试信息，开启 LTO
 [profile.release]

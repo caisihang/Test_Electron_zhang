@@ -4,7 +4,10 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import NavIcon from '@/components/NavIcon.vue'
 import ContractFormModal from '@/components/ContractFormModal.vue'
+import ContractFileImportModal from '@/components/ContractFileImportModal.vue'
 import { listContracts, softDeleteContract, type ContractFilter } from '@/db/repositories/contracts'
+import { pickContractFiles, statLocalFiles, type FolderFile } from '@/services/folder'
+import { isTauri } from '@/services/tauri'
 import type { Contract, ContractRow } from '@/types/models'
 import { confirmAction } from '@/composables/useConfirm'
 import { useAppStore } from '@/stores/app'
@@ -17,6 +20,36 @@ const rows = ref<ContractRow[]>([])
 const filters = reactive<ContractFilter>({ keyword: '', direction: '', status: '' })
 const showForm = ref(false)
 const editing = ref<Contract | null>(null)
+
+// 单文件上传：选中文件后走「新建合同 / 挂到已有合同」导入
+const showUpload = ref(false)
+const uploadFiles = ref<FolderFile[]>([])
+
+async function uploadContractFile(): Promise<void> {
+  if (!isTauri()) {
+    store.showToast('文件上传需在桌面端使用', 'error')
+    return
+  }
+  try {
+    const paths = await pickContractFiles(false)
+    if (paths.length === 0) return
+    const files = await statLocalFiles(paths)
+    if (files.length === 0) {
+      store.showToast('仅支持合同类文件（PDF/Word/Excel/PPT/图片）', 'error')
+      return
+    }
+    uploadFiles.value = files
+    showUpload.value = true
+  } catch (error) {
+    store.showToast(error instanceof Error ? error.message : String(error), 'error')
+  }
+}
+
+function onUploaded(count: number): void {
+  load()
+  store.refreshBadges()
+  store.showToast(`已导入 ${count} 个文件`)
+}
 
 function load(): void {
   rows.value = listContracts(filters)
@@ -73,8 +106,11 @@ function goDetail(id: number): void {
       <div class="page-desc">合同是业务源头，计划、流水、发票都在详情页里</div>
     </div>
     <div class="page-actions">
+      <button class="btn" type="button" @click="uploadContractFile">
+        <NavIcon name="upload" :size="14" /> 上传合同文件
+      </button>
       <button class="btn" type="button" @click="router.push('/library')">
-        <NavIcon name="upload" :size="14" /> 从文件夹导入
+        <NavIcon name="folder" :size="14" /> 从文件夹导入
       </button>
       <button class="btn btn-primary" type="button" @click="openCreate">
         <NavIcon name="plus" :size="14" /> 新建合同
@@ -168,4 +204,6 @@ function goDetail(id: number): void {
   </div>
 
   <ContractFormModal v-model="showForm" :contract="editing" @saved="onSaved" />
+  <!-- 单文件上传后选择导入方式 -->
+  <ContractFileImportModal v-model="showUpload" :files="uploadFiles" @imported="onUploaded" />
 </template>

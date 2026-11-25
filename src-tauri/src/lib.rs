@@ -13,6 +13,7 @@ pub fn run() {
       commands::db_load,
       commands::db_save,
       commands::scan_contract_folder,
+      commands::stat_files,
       commands::read_file_bytes,
       commands::import_attachment,
       commands::resolve_attachment_path,
@@ -22,7 +23,8 @@ pub fn run() {
       commands::read_attachment,
       commands::write_attachment,
       commands::clear_attachments,
-      commands::open_path
+      commands::open_path,
+      commands::write_file_bytes
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

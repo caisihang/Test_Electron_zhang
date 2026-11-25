@@ -145,11 +145,49 @@ CREATE TABLE IF NOT EXISTS contract_files (
 CREATE INDEX IF NOT EXISTS idx_contract_files_contract ON contract_files(contract_id);
 `
 
+// 005 计划到期日改为可空
+// SQLite 不支持直接改列约束，按官方推荐步骤重建表；重建期间关闭外键约束
+const SCHEDULE_DUE_OPTIONAL_SQL = `
+PRAGMA foreign_keys = OFF;
+CREATE TABLE schedules_new (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id     INTEGER NOT NULL REFERENCES contracts(id),
+    direction       TEXT NOT NULL CHECK (direction IN ('income','expense')),
+    label           TEXT,
+    due_date        TEXT,
+    planned_amount  REAL NOT NULL,
+    actual_amount   REAL NOT NULL DEFAULT 0,
+    status          TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','partial','settled','overdue')),
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+INSERT INTO schedules_new
+    (id, contract_id, direction, label, due_date, planned_amount, actual_amount, status, sort_order, created_at)
+  SELECT id, contract_id, direction, label, NULLIF(due_date, ''), planned_amount, actual_amount, status, sort_order, created_at
+  FROM schedules;
+DROP TABLE schedules;
+ALTER TABLE schedules_new RENAME TO schedules;
+CREATE INDEX IF NOT EXISTS idx_schedules_contract ON schedules(contract_id);
+CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(due_date);
+PRAGMA foreign_keys = ON;
+`
+
+// 006 发票增加类型（普票/专票）与开票状态（已开/未开）
+// 历史数据：原本填过开票日期的视为已开
+const INVOICE_EXTEND_SQL = `
+ALTER TABLE invoices ADD COLUMN invoice_type TEXT NOT NULL DEFAULT 'ordinary';
+ALTER TABLE invoices ADD COLUMN issue_status TEXT NOT NULL DEFAULT 'not_issued';
+UPDATE invoices SET issue_status = 'issued' WHERE invoice_date IS NOT NULL AND invoice_date <> '';
+`
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, description: 'create_core_tables', sql: CORE_SQL },
   { version: 2, description: 'add_invoices', sql: INVOICE_SQL },
   { version: 3, description: 'add_settings', sql: SETTINGS_SQL },
   { version: 4, description: 'add_contract_files', sql: CONTRACT_FILES_SQL },
+  { version: 5, description: 'schedule_due_date_optional', sql: SCHEDULE_DUE_OPTIONAL_SQL },
+  { version: 6, description: 'invoice_type_and_issue_status', sql: INVOICE_EXTEND_SQL },
 ]
 
 /** 最新 schema 版本，写入备份包 manifest */

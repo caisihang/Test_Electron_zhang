@@ -70,7 +70,7 @@ export const useAppStore = defineStore('app', {
       if (pending.length === 0) return
       const detail = pending
         .slice(0, 3)
-        .map((item) => `${item.contract_title} ${item.due_date}`)
+        .map((item) => `${item.contract_title} ${item.due_date ?? '未设到期日'}`)
         .join('、')
       try {
         await notifyPending(pending.length, detail)

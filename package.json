@@ -1,7 +1,7 @@
 {
   "name": "personal-finance",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "纯本地个人财务软件（Vue 3 + TypeScript + SQLite/WASM）",
   "type": "module",
   "scripts": {

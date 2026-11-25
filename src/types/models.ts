@@ -5,7 +5,12 @@ export type ContractStatus = 'draft' | 'active' | 'completed' | 'terminated'
 export type ScheduleStatus = 'pending' | 'partial' | 'settled' | 'overdue'
 export type AccountType = 'bank' | 'wechat' | 'alipay' | 'cash'
 export type InvoiceDirection = 'issued' | 'received'
+/** 旧版异常状态，仅保留兼容，不再在界面使用 */
 export type InvoiceStatus = 'normal' | 'missing_payment' | 'missing_invoice'
+/** 发票类型：普票 / 专票 */
+export type InvoiceType = 'ordinary' | 'special'
+/** 开票状态：未开 / 已开 */
+export type InvoiceIssueStatus = 'not_issued' | 'issued'
 
 /** 账户 */
 export interface Account {
@@ -56,7 +61,8 @@ export interface Schedule {
   contract_id: number
   direction: Direction
   label: string | null
-  due_date: string
+  /** 到期日可为空，空值不参与逾期判定 */
+  due_date: string | null
   planned_amount: number
   actual_amount: number
   status: ScheduleStatus
@@ -108,7 +114,7 @@ export interface ContractChange {
   changed_at: string
 }
 
-/** 发票（P1，合同详情内可用） */
+/** 发票 */
 export interface Invoice {
   id: number
   invoice_no: string | null
@@ -119,9 +125,20 @@ export interface Invoice {
   contract_id: number | null
   transaction_id: number | null
   status: InvoiceStatus
+  /** 普票 / 专票 */
+  invoice_type: InvoiceType
+  /** 已开 / 未开 */
+  issue_status: InvoiceIssueStatus
   attachment_path: string | null
   note: string | null
   created_at: string
+}
+
+/** 发票 + 合同信息（列表用） */
+export interface InvoiceRow extends Invoice {
+  contract_no: string | null
+  contract_title: string | null
+  contract_direction: Direction | null
 }
 
 /** 分类 */
@@ -144,7 +161,7 @@ export interface ReconcileCandidate {
   contract_title: string
   contract_no: string
   label: string | null
-  due_date: string
+  due_date: string | null
   planned_amount: number
   actual_amount: number
   remaining: number

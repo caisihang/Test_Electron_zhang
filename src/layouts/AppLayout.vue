@@ -51,6 +51,10 @@ const groups = computed<MenuGroup[]>(() => {
       ],
     },
     {
+      title: '票据',
+      items: [{ label: '发票管理', to: '/invoices', icon: 'invoice' }],
+    },
+    {
       title: '分析',
       items: [
         { label: '合同执行表', to: '/analysis/contracts', icon: 'analysis' },
@@ -59,11 +63,11 @@ const groups = computed<MenuGroup[]>(() => {
     },
   ]
 
-  // P1：发票登记 / 回收站，默认隐藏
+  // P1：回收站暂不开放一级入口（发票管理已开放，见上方菜单）
   if (FEATURE_P1) {
     list.splice(3, 0, {
-      title: '票据',
-      items: [{ label: '发票登记', to: '/invoices', icon: 'invoice' }],
+      title: '回收站',
+      items: [{ label: '回收站', to: '/recycle', icon: 'trash' }],
     })
   }
 

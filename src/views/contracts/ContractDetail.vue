@@ -20,8 +20,16 @@ import {
   updateSchedule,
 } from '@/db/repositories/schedules'
 import { listTransactions } from '@/db/repositories/transactions'
-import { createInvoice, deleteInvoice, listInvoices, updateInvoice } from '@/db/repositories/invoices'
-import type { Contract, Invoice, InvoiceDirection, InvoiceStatus, ScheduleRow, TransactionRow } from '@/types/models'
+import { createInvoice, deleteInvoice, getContractInvoiceStat, listInvoices, updateInvoice } from '@/db/repositories/invoices'
+import type {
+  Contract,
+  InvoiceDirection,
+  InvoiceIssueStatus,
+  InvoiceRow,
+  InvoiceType,
+  ScheduleRow,
+  TransactionRow,
+} from '@/types/models'
 import {
   confirmAction,
 } from '@/composables/useConfirm'
@@ -33,8 +41,10 @@ import {
   formatDateTime,
   formatFileSize,
   formatMoney,
+  formatPercent,
   invoiceDirectionText,
-  invoiceStatusText,
+  invoiceTypeText,
+  issueStatusText,
   ratio,
   scheduleStatusText,
   today,
@@ -69,7 +79,7 @@ const progress = ref<ContractProgress>({
 })
 const schedules = ref<ScheduleRow[]>([])
 const transactions = ref<TransactionRow[]>([])
-const invoices = ref<Invoice[]>([])
+const invoices = ref<InvoiceRow[]>([])
 const changes = ref<Awaited<ReturnType<typeof listContractChanges>>>([])
 const attachments = ref<AttachmentMeta[]>([])
 const attachmentUrls = reactive<Record<string, string>>({})
@@ -94,9 +104,13 @@ const invoiceForm = reactive({
   amount: 0,
   tax_rate: 0,
   invoice_date: today(),
-  status: 'normal' as InvoiceStatus,
+  invoice_type: 'ordinary' as InvoiceType,
+  issue_status: 'issued' as InvoiceIssueStatus,
   note: '',
 })
+
+// 发票闭环统计：已开 / 未开余额 / 开票进度
+const invoiceStat = computed(() => getContractInvoiceStat(contractId, contractAmount.value))
 
 const contractAmount = computed(() => contract.value?.total_amount ?? 0)
 const actualTotal = computed(() =>
@@ -144,16 +158,13 @@ function openScheduleCreate(): void {
 function openScheduleEdit(schedule: ScheduleRow): void {
   editingScheduleId.value = schedule.id
   scheduleForm.label = schedule.label ?? ''
-  scheduleForm.due_date = schedule.due_date
+  scheduleForm.due_date = schedule.due_date ?? ''
   scheduleForm.planned_amount = schedule.planned_amount
   showScheduleForm.value = true
 }
 
 function submitSchedule(): void {
-  if (!scheduleForm.due_date) {
-    store.showToast('请选择到期日', 'error')
-    return
-  }
+  // 到期日可留空，留空不参与逾期判定
   if (Number(scheduleForm.planned_amount) <= 0) {
     store.showToast('计划金额需大于 0', 'error')
     return
@@ -162,7 +173,7 @@ function submitSchedule(): void {
     const current = schedules.value.find((row) => row.id === editingScheduleId.value)
     updateSchedule(editingScheduleId.value, {
       label: scheduleForm.label || null,
-      due_date: scheduleForm.due_date,
+      due_date: scheduleForm.due_date || null,
       planned_amount: Number(scheduleForm.planned_amount),
       sort_order: current?.sort_order ?? 0,
     })
@@ -170,7 +181,7 @@ function submitSchedule(): void {
     createSchedule({
       contract_id: contractId,
       label: scheduleForm.label || null,
-      due_date: scheduleForm.due_date,
+      due_date: scheduleForm.due_date || null,
       planned_amount: Number(scheduleForm.planned_amount),
     })
   }
@@ -271,19 +282,22 @@ function openInvoiceCreate(): void {
   invoiceForm.amount = contractAmount.value
   invoiceForm.tax_rate = 0
   invoiceForm.invoice_date = today()
-  invoiceForm.status = 'normal'
+  invoiceForm.invoice_type = 'ordinary'
+  // 默认按合同方向给出：收入合同=开出，支出合同=收到
+  invoiceForm.issue_status = 'issued'
   invoiceForm.note = ''
   showInvoiceForm.value = true
 }
 
-function openInvoiceEdit(invoice: Invoice): void {
+function openInvoiceEdit(invoice: InvoiceRow): void {
   editingInvoiceId.value = invoice.id
   invoiceForm.invoice_no = invoice.invoice_no ?? ''
   invoiceForm.direction = invoice.direction
   invoiceForm.amount = invoice.amount
   invoiceForm.tax_rate = invoice.tax_rate
   invoiceForm.invoice_date = invoice.invoice_date ?? ''
-  invoiceForm.status = invoice.status
+  invoiceForm.invoice_type = invoice.invoice_type
+  invoiceForm.issue_status = invoice.issue_status
   invoiceForm.note = invoice.note ?? ''
   showInvoiceForm.value = true
 }
@@ -291,6 +305,11 @@ function openInvoiceEdit(invoice: Invoice): void {
 function submitInvoice(): void {
   if (Number(invoiceForm.amount) <= 0) {
     store.showToast('发票金额需大于 0', 'error')
+    return
+  }
+  // 已开票必须有开票日期，未开票可为空
+  if (invoiceForm.issue_status === 'issued' && !invoiceForm.invoice_date) {
+    store.showToast('已开票请填写开票日期', 'error')
     return
   }
   const payload = {
@@ -301,7 +320,8 @@ function submitInvoice(): void {
     invoice_date: invoiceForm.invoice_date || null,
     contract_id: contractId,
     transaction_id: null,
-    status: invoiceForm.status,
+    invoice_type: invoiceForm.invoice_type,
+    issue_status: invoiceForm.issue_status,
     attachment_path: null,
     note: invoiceForm.note || null,
   }
@@ -312,7 +332,7 @@ function submitInvoice(): void {
   store.showToast('发票已保存')
 }
 
-async function removeInvoice(invoice: Invoice): Promise<void> {
+async function removeInvoice(invoice: InvoiceRow): Promise<void> {
   const ok = await confirmAction({ title: '删除发票', message: '确定删除这张发票记录吗？', danger: true, confirmText: '删除' })
   if (!ok) return
   deleteInvoice(invoice.id)
@@ -590,22 +610,26 @@ function back(): void {
             <NavIcon name="plus" :size="13" /> 登记发票
           </button>
           <div class="toolbar-spacer"></div>
-          <span class="text-dim text-sm">P1 功能：合同内可用，一级菜单暂不开放</span>
+          <span class="text-dim text-sm">
+            已开 {{ formatMoney(invoiceStat.issuedAmount) }} / 未开余额 {{ formatMoney(invoiceStat.remaining) }} / 开票进度
+            {{ formatPercent(invoiceStat.progress) }}
+          </span>
         </div>
         <div v-if="invoices.length === 0" class="empty">
           <strong>还没有发票记录</strong>
-          发票为轻量登记，不影响合同与计划
+          登记发票后，可对照合同金额查看已开票与未开票余额
         </div>
         <div v-else class="table-wrap">
           <table class="data-table">
             <thead>
               <tr>
                 <th>发票号</th>
+                <th>类型</th>
                 <th>方向</th>
                 <th class="num">金额</th>
                 <th class="num">税率</th>
                 <th>开票日期</th>
-                <th>状态</th>
+                <th>开票状态</th>
                 <th>备注</th>
                 <th class="actions">操作</th>
               </tr>
@@ -613,11 +637,20 @@ function back(): void {
             <tbody>
               <tr v-for="invoice in invoices" :key="invoice.id">
                 <td>{{ invoice.invoice_no || '—' }}</td>
+                <td>
+                  <span class="tag" :class="invoice.invoice_type === 'special' ? 'tag-blue' : 'tag-gray'">
+                    {{ invoiceTypeText[invoice.invoice_type] }}
+                  </span>
+                </td>
                 <td>{{ invoiceDirectionText[invoice.direction] }}</td>
                 <td class="num">{{ formatMoney(invoice.amount) }}</td>
                 <td class="num">{{ invoice.tax_rate }}%</td>
                 <td>{{ formatDate(invoice.invoice_date) }}</td>
-                <td><span class="tag" :class="invoice.status === 'normal' ? 'tag-green' : 'tag-amber'">{{ invoiceStatusText[invoice.status] }}</span></td>
+                <td>
+                  <span class="tag" :class="invoice.issue_status === 'issued' ? 'tag-green' : 'tag-amber'">
+                    {{ issueStatusText[invoice.issue_status] }}
+                  </span>
+                </td>
                 <td>{{ invoice.note || '—' }}</td>
                 <td class="actions">
                   <button class="btn btn-link" type="button" @click="openInvoiceEdit(invoice)">编辑</button>
@@ -625,6 +658,15 @@ function back(): void {
                 </td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3" class="text-dim">合计</td>
+                <td class="num">{{ formatMoney(invoiceStat.issuedAmount) }}</td>
+                <td colspan="5" class="text-dim">
+                  共 {{ invoices.length }} 张，其中未开 {{ invoiceStat.notIssuedCount }} 张
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -712,8 +754,9 @@ function back(): void {
           </datalist>
         </div>
         <div class="field">
-          <label>到期日 <span class="req">*</span></label>
+          <label>到期日</label>
           <input v-model="scheduleForm.due_date" class="input" type="date" />
+          <span class="text-dim text-sm">可留空，留空不参与逾期判定</span>
         </div>
         <div class="field">
           <label>计划金额 <span class="req">*</span></label>
@@ -790,16 +833,23 @@ function back(): void {
           <input v-model.number="invoiceForm.tax_rate" class="input num" type="number" min="0" step="0.01" />
         </div>
         <div class="field">
-          <label>开票日期</label>
-          <input v-model="invoiceForm.invoice_date" class="input" type="date" />
+          <label>发票类型</label>
+          <select v-model="invoiceForm.invoice_type" class="select">
+            <option value="ordinary">普通发票</option>
+            <option value="special">增值税专用发票</option>
+          </select>
         </div>
         <div class="field">
-          <label>状态</label>
-          <select v-model="invoiceForm.status" class="select">
-            <option value="normal">正常</option>
-            <option value="missing_payment">缺流水</option>
-            <option value="missing_invoice">缺发票</option>
+          <label>开票状态</label>
+          <select v-model="invoiceForm.issue_status" class="select">
+            <option value="not_issued">未开</option>
+            <option value="issued">已开</option>
           </select>
+        </div>
+        <div class="field">
+          <label>开票日期</label>
+          <input v-model="invoiceForm.invoice_date" class="input" type="date" />
+          <span class="text-dim text-sm">未开票可留空</span>
         </div>
         <div class="field span-2">
           <label>备注</label>

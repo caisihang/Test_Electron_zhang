@@ -48,7 +48,7 @@ const totals = computed(() => {
   const payable = open
     .filter((row) => row.direction === 'expense')
     .reduce((sum, row) => sum + Math.max(row.planned_amount - row.actual_amount, 0), 0)
-  const overdue = open.filter((row) => row.due_date < today()).length
+  const overdue = open.filter((row) => row.due_date && row.due_date < today()).length
   return { receivable, payable, overdue }
 })
 
@@ -93,7 +93,7 @@ function openEdit(row: ScheduleRow): void {
   form.id = row.id
   form.contract_id = row.contract_id
   form.label = row.label ?? ''
-  form.due_date = row.due_date
+  form.due_date = row.due_date ?? ''
   form.planned_amount = row.planned_amount
   showForm.value = true
 }
@@ -101,10 +101,6 @@ function openEdit(row: ScheduleRow): void {
 function submit(): void {
   if (!form.id && !form.contract_id) {
     store.showToast('请选择合同', 'error')
-    return
-  }
-  if (!form.due_date) {
-    store.showToast('请选择到期日', 'error')
     return
   }
   if (Number(form.planned_amount) <= 0) {
@@ -117,7 +113,7 @@ function submit(): void {
       const current = rows.value.find((row) => row.id === form.id)
       updateSchedule(form.id, {
         label: form.label || null,
-        due_date: form.due_date,
+        due_date: form.due_date || null,
         planned_amount: Number(form.planned_amount),
         sort_order: current?.sort_order ?? 0,
       })
@@ -125,7 +121,7 @@ function submit(): void {
       createSchedule({
         contract_id: form.contract_id,
         label: form.label || null,
-        due_date: form.due_date,
+        due_date: form.due_date || null,
         planned_amount: Number(form.planned_amount),
       })
     }
@@ -299,8 +295,9 @@ function goContract(row: ScheduleRow): void {
         </datalist>
       </div>
       <div class="field">
-        <label>到期日 <span class="req">*</span></label>
+        <label>到期日</label>
         <input v-model="form.due_date" class="input" type="date" />
+        <span class="text-dim text-sm">可留空，留空不参与逾期判定</span>
       </div>
       <div class="field">
         <label>计划金额 <span class="req">*</span></label>
