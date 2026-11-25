@@ -28,7 +28,7 @@ const store = useAppStore()
 
 const rows = ref<ScheduleRow[]>([])
 const contracts = ref<ContractRow[]>([])
-const filters = reactive<ScheduleFilter>({ keyword: '', direction: '', status: 'open', from: '', to: '' })
+const filters = reactive<ScheduleFilter>({ keyword: '', direction: '', status: 'all', from: '', to: '' })
 const showForm = ref(false)
 const saving = ref(false)
 
@@ -203,10 +203,10 @@ function goContract(row: ScheduleRow): void {
 
   <div class="toolbar">
     <div class="seg">
+      <button type="button" :class="{ active: filters.status === 'all' }" @click="setStatus('all')">全部</button>
       <button type="button" :class="{ active: filters.status === 'open' }" @click="setStatus('open')">未结清</button>
       <button type="button" :class="{ active: filters.status === 'overdue' }" @click="setStatus('overdue')">已逾期</button>
       <button type="button" :class="{ active: filters.status === 'settled' }" @click="setStatus('settled')">已结清</button>
-      <button type="button" :class="{ active: filters.status === 'all' }" @click="setStatus('all')">全部</button>
     </div>
     <select v-model="filters.direction" class="select" @change="load">
       <option value="">全部方向</option>
